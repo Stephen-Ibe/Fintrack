@@ -15,6 +15,12 @@ import { FaCaretDown } from "react-icons/fa";
 import { FaEllipsis } from "react-icons/fa6";
 import { AppLayout } from "./components";
 import { FTAvatar } from "./components/atoms";
+import {
+  AVATAR_GROUP,
+  DashboardSummary,
+  formatCurrency,
+  formatNumber,
+} from "./lib";
 
 const Home = () => (
   <AppLayout>
@@ -42,10 +48,9 @@ const Home = () => (
 
         <Flex align="center" gap="xs">
           <AvatarGroup spacing="xs">
-            <FTAvatar src="user1.png" size="sm" />
-            <FTAvatar src="user2.png" size="sm" />
-            <FTAvatar src="user3.png" size="sm" />
-            <FTAvatar src="user4.png" size="sm" />
+            {AVATAR_GROUP.map((avatar) => (
+              <FTAvatar key={avatar.src} src={avatar.src} size="sm" />
+            ))}
           </AvatarGroup>
           <Text size="xs">Ava, Liam, Noah 12+ others</Text>
         </Flex>
@@ -66,18 +71,23 @@ const Home = () => (
                 <Title order={4}>Summary</Title>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-y-4 md:gap-4">
-                  {[1, 2, 3, 4].map((item) => (
-                    <div key={item} className="rounded-lg p-4 bg-[#34616F]/10">
+                  {DashboardSummary.map(({ title, amount, percentage }) => (
+                    <div key={title} className="rounded-lg p-4 bg-[#34616F]/10">
                       <div className="flex items-center justify-between">
-                        <Text size="sm">Total Balance</Text>
+                        <Text size="sm">{title}</Text>
                         <div className="cursor-pointer">
                           <FaEllipsis />
                         </div>
                       </div>
                       <Text size="xl" fw={700} style={{ fontSize: "2.25rem" }}>
-                        $5,000
+                        {title === "Transaction Count"
+                          ? formatNumber(amount)
+                          : formatCurrency(amount, "$", 0)}
                       </Text>
-                      <Text size="sm">+5%</Text>
+
+                      <Text size="sm" c="#3E7383">
+                        {percentage}%
+                      </Text>
                     </div>
                   ))}
                 </div>
