@@ -1,6 +1,6 @@
 export type TGenericObject<T = string | number | null> = Record<string, T>;
 
-export interface DashboardSummary {
+export interface IDashboardSummary {
   totalBalance: number;
   totalCredits: number;
   totalDebits: number;

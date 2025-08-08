@@ -7,7 +7,7 @@ export const NAV_LINKS: Array<TGenericObject> = [
   { label: "Settings" },
 ];
 
-export const AVATAR_GROUP: Array<TGenericObject> = [
+export const AVATAR_GROUP: Array<TGenericObject<string>> = [
   { src: "user1.png", alt: "User 1" },
   { src: "user2.png", alt: "User 2" },
   { src: "user3.png", alt: "User 3" },
