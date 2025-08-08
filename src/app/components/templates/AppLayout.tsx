@@ -16,8 +16,8 @@ export const AppLayout = ({ children }: Props) => {
       padding="md"
       header={{ height: 50 }}
       navbar={{
-        width: { base: 250 },
-        breakpoint: "sm",
+        width: { base: 200, sm: 200, md: 300 },
+        breakpoint: "md",
         collapsed: { mobile: !opened, desktop: false },
       }}
     >
