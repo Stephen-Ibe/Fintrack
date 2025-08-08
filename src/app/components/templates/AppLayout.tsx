@@ -1,7 +1,6 @@
+import { NAV_LINKS, TGenericObject } from "@/app/lib";
 import { AppShell, Burger, Group, Image, SimpleGrid } from "@mantine/core";
 import { useDisclosure } from "@mantine/hooks";
-
-import { TGenericObject } from "@/app/lib";
 import { FiSearch } from "react-icons/fi";
 import { SlGrid } from "react-icons/sl";
 import { FTAvatar } from "../atoms";
@@ -9,13 +8,6 @@ import { FTAvatar } from "../atoms";
 type Props = {
   children: React.ReactNode;
 };
-
-const navLinks: Array<TGenericObject> = [
-  { label: "Dashboard" },
-  { label: "Transactions" },
-  { label: "Reports" },
-  { label: "Settings" },
-];
 
 export const AppLayout = ({ children }: Props) => {
   const [opened, { toggle }] = useDisclosure();
@@ -52,7 +44,7 @@ export const AppLayout = ({ children }: Props) => {
 
       <AppShell.Navbar pl={20} pt={20}>
         <SimpleGrid>
-          {navLinks.map(({ label }: TGenericObject) => (
+          {NAV_LINKS.map(({ label }: TGenericObject) => (
             <AppShell.Section key={label}>{label}</AppShell.Section>
           ))}
         </SimpleGrid>
