@@ -1,4 +1,4 @@
-name: Cancel Vercel Preview
+name: Cancel Vercel PR Preview
 
 on:
   pull_request:
