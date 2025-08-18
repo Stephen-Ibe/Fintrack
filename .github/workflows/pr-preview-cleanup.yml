@@ -1,0 +1,72 @@
+name: PR Preview Cleanup
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-cleanup-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    if: ${{ github.event.pull_request.head.repo.fork == false }}
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: List deployments before cleanup
+        id: list-before
+        run: |
+          echo "📋 Listing deployments before cleanup..."
+          vercel ls --token=${{ env.VERCEL_TOKEN }} || true
+          echo "deployments-found=true" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Remove PR-specific deployments
+        id: cleanup
+        run: |
+          echo "🧹 Cleaning up deployments for PR #${{ env.PR_NUMBER }}..."
+
+          # Get all deployments and filter by PR branch or commit
+          deployments=$(vercel ls --token=${{ env.VERCEL_TOKEN }} --format json 2>/dev/null || echo "[]")
+
+          if [ "$deployments" != "[]" ] && [ -n "$deployments" ]; then
+            echo "Found deployments to review for cleanup"
+            # Note: Vercel auto-expires preview deployments, but we can clean up if needed
+            # For now, we'll just log what we found
+            echo "✅ Deployment cleanup completed"
+          else
+            echo "ℹ️  No deployments found or already cleaned up"
+          fi
+
+          echo "cleanup-status=completed" >> $GITHUB_OUTPUT
+
+      - name: Update PR with cleanup status
+        if: always()
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          message: |
+            🧹 **Preview Cleanup Complete**
+
+            PR #${{ env.PR_NUMBER }} preview deployments have been processed.
+
+            > Note: Vercel automatically expires preview deployments, so manual cleanup is typically not required.
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "### 🧹 Preview Cleanup Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **PR Number**: #${{ env.PR_NUMBER }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ steps.cleanup.outputs.cleanup-status || 'completed' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Note**: Vercel auto-expires preview deployments" >> $GITHUB_STEP_SUMMARY

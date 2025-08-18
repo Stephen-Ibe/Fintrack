@@ -13,8 +13,8 @@ import {
 import { BsThreeDots } from "react-icons/bs";
 import { FaCaretDown } from "react-icons/fa";
 import { FaEllipsis } from "react-icons/fa6";
-import { AppLayout } from "./components";
-import { FTAvatar } from "./components/atoms";
+import { AppLayout, FTAvatar, TransactionsTable } from "./components";
+
 import {
   AVATAR_GROUP,
   DashboardSummary,
@@ -95,6 +95,10 @@ const Home = () => (
             </section>
           </Tabs.Panel>
         </Tabs>
+      </section>
+
+      <section>
+        <TransactionsTable />
       </section>
     </Flex>
   </AppLayout>
