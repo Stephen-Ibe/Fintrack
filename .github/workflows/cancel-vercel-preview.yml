@@ -32,17 +32,38 @@ jobs:
 
           # Fetch deployments for this PR
           echo "📡 Fetching deployments..."
-          DEPLOYMENTS=$(curl -s -w "%{http_code}" -H "Authorization: Bearer ${{ env.VERCEL_TOKEN }}" \
-            "https://api.vercel.com/v6/deployments?projectId=${{ env.VERCEL_PROJECT_ID }}&meta-githubPrId=${{ env.PR_NUMBER }}")
 
-          HTTP_CODE=$(echo "$DEPLOYMENTS" | tail -n1)
-          RESPONSE_BODY=$(echo "$DEPLOYMENTS" | head -n -1)
+          # Use separate files to capture response and status code
+          TEMP_RESPONSE=$(mktemp)
+          TEMP_HEADERS=$(mktemp)
 
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "❌ Failed to fetch deployments (HTTP $HTTP_CODE)"
-            echo "Response: $RESPONSE_BODY"
+          curl -s -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ env.VERCEL_TOKEN }}" \
+            -o "$TEMP_RESPONSE" \
+            -D "$TEMP_HEADERS" \
+            "https://api.vercel.com/v6/deployments?projectId=${{ env.VERCEL_PROJECT_ID }}&meta-githubPrId=${{ env.PR_NUMBER }}"
+
+          HTTP_CODE=$?
+          RESPONSE_BODY=$(cat "$TEMP_RESPONSE")
+
+          # Check if curl command was successful
+          if [ $HTTP_CODE -ne 0 ]; then
+            echo "❌ Failed to fetch deployments (curl error: $HTTP_CODE)"
+            rm -f "$TEMP_RESPONSE" "$TEMP_HEADERS"
             exit 1
           fi
+
+          # Check HTTP status from headers
+          HTTP_STATUS=$(grep -i "^HTTP" "$TEMP_HEADERS" | tail -1 | awk '{print $2}')
+
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "❌ Failed to fetch deployments (HTTP $HTTP_STATUS)"
+            echo "Response: $RESPONSE_BODY"
+            rm -f "$TEMP_RESPONSE" "$TEMP_HEADERS"
+            exit 1
+          fi
+
+          echo "✅ Successfully fetched deployments (HTTP $HTTP_STATUS)"
 
           # Parse deployment IDs
           IDS=$(echo "$RESPONSE_BODY" | jq -r '.deployments[]? | select(.state == "BUILDING" or .state == "QUEUED") | .uid' 2>/dev/null || echo "")
@@ -50,6 +71,7 @@ jobs:
           if [ -z "$IDS" ]; then
             echo "ℹ️  No active deployments found for PR #${{ env.PR_NUMBER }}"
             echo "canceled-count=0" >> $GITHUB_OUTPUT
+            rm -f "$TEMP_RESPONSE" "$TEMP_HEADERS"
             exit 0
           fi
 
@@ -57,18 +79,31 @@ jobs:
           CANCELED_COUNT=0
           for ID in $IDS; do
             echo "🛑 Canceling deployment: $ID"
-            CANCEL_RESPONSE=$(curl -s -w "%{http_code}" -X PATCH \
-              "https://api.vercel.com/v13/deployments/$ID/cancel" \
-              -H "Authorization: Bearer ${{ env.VERCEL_TOKEN }}")
 
-            CANCEL_HTTP_CODE=$(echo "$CANCEL_RESPONSE" | tail -n1)
-            if [ "$CANCEL_HTTP_CODE" = "200" ] || [ "$CANCEL_HTTP_CODE" = "409" ]; then
-              echo "✅ Successfully canceled deployment $ID"
+            CANCEL_TEMP_RESPONSE=$(mktemp)
+            CANCEL_TEMP_HEADERS=$(mktemp)
+
+            curl -s -X PATCH \
+              -H "Authorization: Bearer ${{ env.VERCEL_TOKEN }}" \
+              -o "$CANCEL_TEMP_RESPONSE" \
+              -D "$CANCEL_TEMP_HEADERS" \
+              "https://api.vercel.com/v13/deployments/$ID/cancel"
+
+            CANCEL_CURL_CODE=$?
+            CANCEL_HTTP_STATUS=$(grep -i "^HTTP" "$CANCEL_TEMP_HEADERS" | tail -1 | awk '{print $2}' 2>/dev/null || echo "000")
+
+            if [ $CANCEL_CURL_CODE -eq 0 ] && ([ "$CANCEL_HTTP_STATUS" = "200" ] || [ "$CANCEL_HTTP_STATUS" = "409" ]); then
+              echo "✅ Successfully canceled deployment $ID (HTTP $CANCEL_HTTP_STATUS)"
               CANCELED_COUNT=$((CANCELED_COUNT + 1))
             else
-              echo "⚠️  Failed to cancel deployment $ID (HTTP $CANCEL_HTTP_CODE)"
+              echo "⚠️  Failed to cancel deployment $ID (curl: $CANCEL_CURL_CODE, HTTP: $CANCEL_HTTP_STATUS)"
             fi
+
+            rm -f "$CANCEL_TEMP_RESPONSE" "$CANCEL_TEMP_HEADERS"
           done
+
+          # Cleanup
+          rm -f "$TEMP_RESPONSE" "$TEMP_HEADERS"
 
           echo "canceled-count=$CANCELED_COUNT" >> $GITHUB_OUTPUT
           echo "✅ Canceled $CANCELED_COUNT deployment(s) for PR #${{ env.PR_NUMBER }}"
