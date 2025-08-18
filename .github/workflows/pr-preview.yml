@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   deploy:
-    if: ${{ github.event.pull_request.head.repo.fork == false }}
+    if: ${{ github.event.pull_request.head.repo.fork == false && !contains(github.event.pull_request.labels.*.name, 'docs-only') && !contains(github.event.pull_request.labels.*.name, 'skip-preview') }}
     runs-on: ubuntu-latest
     env:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
