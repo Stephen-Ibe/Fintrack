@@ -1,0 +1,96 @@
+name: Cancel Vercel Preview
+
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: cancel-preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  cancel-vercel:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.label.name == 'skip-preview' || github.event.label.name == 'docs-only' }}
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      LABEL_NAME: ${{ github.event.label.name }}
+    steps:
+      - name: Install jq for JSON parsing
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Cancel running Vercel preview deployments
+        id: cancel-deployments
+        run: |
+          echo "🛑 Canceling Vercel preview deployments for PR #${{ env.PR_NUMBER }} (label: ${{ env.LABEL_NAME }})"
+
+          # Fetch deployments for this PR
+          echo "📡 Fetching deployments..."
+          DEPLOYMENTS=$(curl -s -w "%{http_code}" -H "Authorization: Bearer ${{ env.VERCEL_TOKEN }}" \
+            "https://api.vercel.com/v6/deployments?projectId=${{ env.VERCEL_PROJECT_ID }}&meta-githubPrId=${{ env.PR_NUMBER }}")
+
+          HTTP_CODE=$(echo "$DEPLOYMENTS" | tail -n1)
+          RESPONSE_BODY=$(echo "$DEPLOYMENTS" | head -n -1)
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Failed to fetch deployments (HTTP $HTTP_CODE)"
+            echo "Response: $RESPONSE_BODY"
+            exit 1
+          fi
+
+          # Parse deployment IDs
+          IDS=$(echo "$RESPONSE_BODY" | jq -r '.deployments[]? | select(.state == "BUILDING" or .state == "QUEUED") | .uid' 2>/dev/null || echo "")
+
+          if [ -z "$IDS" ]; then
+            echo "ℹ️  No active deployments found for PR #${{ env.PR_NUMBER }}"
+            echo "canceled-count=0" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          # Cancel each active deployment
+          CANCELED_COUNT=0
+          for ID in $IDS; do
+            echo "🛑 Canceling deployment: $ID"
+            CANCEL_RESPONSE=$(curl -s -w "%{http_code}" -X PATCH \
+              "https://api.vercel.com/v13/deployments/$ID/cancel" \
+              -H "Authorization: Bearer ${{ env.VERCEL_TOKEN }}")
+
+            CANCEL_HTTP_CODE=$(echo "$CANCEL_RESPONSE" | tail -n1)
+            if [ "$CANCEL_HTTP_CODE" = "200" ] || [ "$CANCEL_HTTP_CODE" = "409" ]; then
+              echo "✅ Successfully canceled deployment $ID"
+              CANCELED_COUNT=$((CANCELED_COUNT + 1))
+            else
+              echo "⚠️  Failed to cancel deployment $ID (HTTP $CANCEL_HTTP_CODE)"
+            fi
+          done
+
+          echo "canceled-count=$CANCELED_COUNT" >> $GITHUB_OUTPUT
+          echo "✅ Canceled $CANCELED_COUNT deployment(s) for PR #${{ env.PR_NUMBER }}"
+
+      - name: Update PR with cancellation status
+        if: always()
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          message: |
+            🛑 **Preview Deployment Canceled**
+
+            Label `${{ env.LABEL_NAME }}` was added to PR #${{ env.PR_NUMBER }}.
+
+            **Status**: ${{ steps.cancel-deployments.outputs.canceled-count || '0' }} deployment(s) canceled.
+
+            > Preview deployments have been stopped for this PR.
+
+      - name: Job summary
+        if: always()
+        run: |
+          echo "### 🛑 Preview Cancellation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **PR Number**: #${{ env.PR_NUMBER }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger Label**: \`${{ env.LABEL_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Deployments Canceled**: ${{ steps.cancel-deployments.outputs.canceled-count || '0' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: Preview deployments stopped" >> $GITHUB_STEP_SUMMARY
